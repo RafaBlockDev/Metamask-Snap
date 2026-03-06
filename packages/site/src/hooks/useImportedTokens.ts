@@ -1,0 +1,327 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useAccount } from 'wagmi';
+
+import { useInvokeSnap } from './useInvokeSnap';
+import type { ImportedToken } from '../types/token';
+import {
+  subscribeImportedTokens,
+  notifyImportedTokensUpdated,
+} from '../utils/importedTokensEvents';
+import {
+  getImportedTokensByAccount,
+  addImportedTokenByAccount,
+  removeImportedTokenByAccount,
+  clearImportedTokensByAccount,
+  getERC20TokensByAccount,
+  getNFTTokensByAccount,
+} from '../utils/localStorage';
+import { parseNFTAddress } from '../utils/tokenValidation';
+import {
+  getEnvironmentForChain,
+  isSupportedChainId,
+} from '../config/networks';
+
+export const useImportedTokens = () => {
+  const { address, chain } = useAccount();
+  const chainId = chain?.id;
+  const [importedTokens, setImportedTokensState] = useState<ImportedToken[]>(
+    [],
+  );
+  const [isLoading, setIsLoading] = useState(true);
+  const invokeSnap = useInvokeSnap();
+  const hasSyncedRef = useRef(false);
+
+  const loadTokens = useCallback(() => {
+    try {
+      if (address && chainId) {
+        const tokens = getImportedTokensByAccount(address, chainId);
+        setImportedTokensState(tokens);
+      } else {
+        setImportedTokensState([]);
+      }
+    } catch (error) {
+      void error;
+      setImportedTokensState([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [address, chainId]);
+
+  const syncFromSnap = useCallback(async () => {
+    if (!address || !chainId) {
+      return;
+    }
+    if (hasSyncedRef.current) {
+      return;
+    }
+    hasSyncedRef.current = true;
+
+    try {
+      const result = (await invokeSnap({ method: 'get-tokens' })) as {
+        success: boolean;
+        tokens: {
+          address: string;
+          name: string;
+          symbol: string;
+          decimals: string | null;
+          type: string;
+          tokenId?: string;
+        }[];
+      } | null;
+
+      if (!result?.success || !result.tokens?.length) {
+        return;
+      }
+
+      const localTokens = getImportedTokensByAccount(address, chainId);
+      let hasNewTokens = false;
+
+      for (const snapToken of result.tokens) {
+        const isNFT =
+          snapToken.type === 'ERC721' || snapToken.type === 'ERC1155';
+        const localAddress =
+          isNFT && snapToken.tokenId
+            ? `${snapToken.address}-${snapToken.tokenId}`
+            : snapToken.address;
+
+        const alreadyLocal = localTokens.some(
+          (t) => t.address.toLowerCase() === localAddress.toLowerCase(),
+        );
+
+        if (!alreadyLocal) {
+          const tokenToAdd: ImportedToken = {
+            address: localAddress,
+            name: snapToken.name,
+            symbol: snapToken.symbol,
+            ...(snapToken.decimals
+              ? { decimals: parseInt(snapToken.decimals, 10) }
+              : {}),
+            type: (snapToken.type as ImportedToken['type']) || 'ERC20',
+          };
+          addImportedTokenByAccount(address, tokenToAdd, chainId);
+          hasNewTokens = true;
+        }
+      }
+
+      if (hasNewTokens) {
+        const updatedTokens = getImportedTokensByAccount(address, chainId);
+        setImportedTokensState(updatedTokens);
+        notifyImportedTokensUpdated();
+      }
+    } catch (err) {
+      void err;
+    }
+  }, [address, chainId, invokeSnap]);
+
+  useEffect(() => {
+    hasSyncedRef.current = false;
+  }, [address, chainId]);
+
+  useEffect(() => {
+    setIsLoading(true);
+    loadTokens();
+    syncFromSnap();
+  }, [loadTokens, syncFromSnap]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeImportedTokens(() => {
+      setIsLoading(true);
+      loadTokens();
+    });
+
+    return unsubscribe;
+  }, [loadTokens]);
+
+  const addToken = useCallback(
+    async (token: ImportedToken) => {
+      if (!address || !chainId) {
+        return;
+      }
+
+      try {
+        addImportedTokenByAccount(address, token, chainId);
+        // Reload tokens from localStorage to ensure consistency
+        const updatedTokens = getImportedTokensByAccount(address, chainId);
+        setImportedTokensState(updatedTokens);
+        notifyImportedTokensUpdated();
+
+        try {
+          const isNFT = token.type === 'ERC721' || token.type === 'ERC1155';
+          let snapAddress = token.address;
+          let snapTokenId: string | undefined;
+
+          if (isNFT) {
+            const parsed = parseNFTAddress(token.address);
+            snapAddress = parsed.contractAddress;
+            snapTokenId = parsed.tokenId || undefined;
+          }
+
+          const params = {
+            address: snapAddress,
+            name: token.name,
+            symbol: token.symbol,
+            decimals: isNFT ? '0' : token.decimals?.toString() || '18',
+            tokenType: token.type,
+            ...(snapTokenId ? { tokenId: snapTokenId } : {}),
+          };
+
+          const tryImport = async () => {
+            const result = (await invokeSnap({
+              method: 'import-token',
+              params,
+            })) as { success?: boolean; error?: string } | null;
+
+            if (result && typeof result === 'object' && result.success === false) {
+              throw new Error(result.error || 'import-token failed');
+            }
+          };
+
+          try {
+            await invokeSnap({ method: 'connect-to-wallet' });
+          } catch (error) {
+            void error;
+          }
+
+          if (isSupportedChainId(chainId)) {
+            const environment = getEnvironmentForChain(chainId);
+            try {
+              await invokeSnap({
+                method: 'set-environment',
+                params: { environment },
+              });
+            } catch (error) {
+              void error;
+            }
+          }
+
+          try {
+            await tryImport();
+          } catch (snapError) {
+            const msg =
+              snapError instanceof Error
+                ? snapError.message
+                : String(snapError);
+            const needsConnection =
+              msg.includes('No account connected') ||
+              msg.includes('account') ||
+              msg.toLowerCase().includes('permission');
+
+            if (needsConnection) {
+              try {
+                await invokeSnap({ method: 'connect-to-wallet' });
+                await tryImport();
+                return;
+              } catch (retryError) {
+                void retryError;
+                return;
+              }
+            }
+
+            void snapError;
+          }
+        } catch (snapError) {
+          void snapError;
+        }
+      } catch (error) {
+        void error;
+      }
+    },
+    [address, chainId, invokeSnap],
+  );
+
+  const removeToken = useCallback(
+    async (tokenAddress: string) => {
+      if (!address || !chainId) {
+        return;
+      }
+
+      try {
+        removeImportedTokenByAccount(address, tokenAddress, chainId);
+        // Reload tokens from localStorage to ensure consistency
+        const updatedTokens = getImportedTokensByAccount(address, chainId);
+        setImportedTokensState(updatedTokens);
+        notifyImportedTokensUpdated();
+
+        try {
+          const parsed = parseNFTAddress(tokenAddress);
+          await invokeSnap({
+            method: 'hide-token',
+            params: {
+              address: parsed.contractAddress,
+              ...(parsed.tokenId ? { tokenId: parsed.tokenId } : {}),
+            },
+          });
+        } catch (snapError) {
+          void snapError;
+        }
+      } catch (error) {
+        void error;
+      }
+    },
+    [address, chainId, invokeSnap],
+  );
+
+  const clearAllTokens = useCallback(() => {
+    if (!address || !chainId) {
+      return;
+    }
+
+    try {
+      clearImportedTokensByAccount(address, chainId);
+      setImportedTokensState([]);
+      notifyImportedTokensUpdated();
+    } catch (error) {
+      void error;
+    }
+  }, [address, chainId]);
+
+  // Check if a token exists
+  const hasToken = useCallback(
+    (tokenAddress: string) => {
+      return importedTokens.some(
+        (token) => token.address.toLowerCase() === tokenAddress.toLowerCase(),
+      );
+    },
+    [importedTokens],
+  );
+
+  // Refresh tokens from localStorage
+  const refreshTokens = useCallback(() => {
+    if (!address || !chainId) {
+      return;
+    }
+
+    try {
+      const tokens = getImportedTokensByAccount(address, chainId);
+      setImportedTokensState(tokens);
+    } catch (error) {
+      void error;
+    }
+  }, [address, chainId]);
+
+  const getERC20TokensList = useCallback(() => {
+    if (!address || !chainId) {
+      return [];
+    }
+    return getERC20TokensByAccount(address, chainId);
+  }, [address, chainId]);
+
+  const getNFTTokensList = useCallback(() => {
+    if (!address || !chainId) {
+      return [];
+    }
+    return getNFTTokensByAccount(address, chainId);
+  }, [address, chainId]);
+
+  return {
+    importedTokens,
+    isLoading,
+    addToken,
+    removeToken,
+    clearAllTokens,
+    hasToken,
+    refreshTokens,
+    getERC20TokensList,
+    getNFTTokensList,
+  };
+};

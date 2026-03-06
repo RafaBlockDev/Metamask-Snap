@@ -1,0 +1,155 @@
+import {
+  Button,
+  Box,
+  Heading,
+  Text,
+  Copyable,
+  Icon,
+  Image,
+  Link,
+  Bold,
+  Section,
+  Row,
+  Address,
+} from '@metamask/snaps-sdk/jsx';
+import type { Token } from 'src/types';
+
+import defaultToken from '../../images/default.svg';
+import { TokenViewSelector } from '../types';
+import { generateTokenAvatar } from '../utils/image';
+import { formatTokenBalance, truncateAddress } from '../utils/token';
+
+export const TokenDetails = ({ token }: { token: Token }) => {
+  const renderNFTDetails = () => (
+    <Box direction="vertical" alignment="space-between">
+      <Box direction="vertical">
+        <Box direction="horizontal">
+          <Button name="token-cancel">
+            <Icon name="arrow-left" />
+          </Button>
+        </Box>
+
+        <Section alignment="center" direction="vertical">
+          <Image src={token.image || defaultToken} alt={`NFT ${token.name}`} />
+          <Box direction="vertical" alignment="center">
+            <Heading size="md">{token.name}</Heading>
+            <Text color="muted">
+              {token.symbol}
+              {token.tokenId ? ` · #${token.tokenId}` : ''}
+            </Text>
+          </Box>
+        </Section>
+
+        <Section direction="vertical">
+          <Row label="Contract">
+            <Address address={token.address as `0x${string}`} />
+          </Row>
+          {token.tokenId ? (
+            <Row label="Token ID">
+              <Text>
+                <Bold>{token.tokenId}</Bold>
+              </Text>
+            </Row>
+          ) : null}
+          {token.uri ? (
+            <Row label="Metadata">
+              <Link href={token.uri}>View URI</Link>
+            </Row>
+          ) : null}
+        </Section>
+      </Box>
+
+      <Button
+        variant="destructive"
+        name={`confirm-hide-token-${token.address}`}
+      >
+        Hide token
+      </Button>
+    </Box>
+  );
+
+  const renderTokenDetails = () => (
+    <Box direction="vertical" alignment="space-between">
+      <Box direction="vertical" alignment="start">
+        <Box direction="horizontal">
+          <Button name="token-cancel">
+            <Icon name="arrow-left" />
+          </Button>
+          <Text>
+            <Bold>{token.symbol}</Bold>
+          </Text>
+        </Box>
+
+        <Box direction="horizontal" alignment="start">
+          <Text> </Text>
+        </Box>
+        <Box direction="horizontal" alignment="start">
+          <Heading size="md">Your balance</Heading>
+        </Box>
+        <Box direction="horizontal" alignment="space-between">
+          <Box alignment="space-between" direction="horizontal">
+            <Box alignment="center" direction="horizontal">
+              <Box alignment="center" direction="vertical">
+                <Image
+                  src={generateTokenAvatar(token.symbol)}
+                  alt="Token logo"
+                />
+              </Box>
+              <Box direction="vertical" alignment="center">
+                <Text>{token.name}</Text>
+              </Box>
+            </Box>
+          </Box>
+          <Box direction="vertical" alignment="end">
+            <Text>
+              {formatTokenBalance(token.balance, token.decimals)} {token.symbol}
+            </Text>
+          </Box>
+        </Box>
+        <Box direction="horizontal" alignment="start">
+          <Text> </Text>
+        </Box>
+        <Box direction="horizontal" alignment="start">
+          <Heading size="md">Token details</Heading>
+        </Box>
+        <Box direction="horizontal" alignment="space-between">
+          <Text>Contract address</Text>
+          <Copyable value={token.address} />
+        </Box>
+        {token.uri ? (
+          <Box direction="horizontal" alignment="space-between">
+            <Text>Token URI</Text>
+            <Link href={token.uri}>Open</Link>
+          </Box>
+        ) : null}
+        {token.tokenId ? (
+          <Box direction="horizontal" alignment="space-between">
+            <Text>Token ID</Text>
+            <Text>{token.tokenId}</Text>
+          </Box>
+        ) : null}
+        {token.image ? (
+          <Box direction="horizontal" alignment="space-between">
+            <Image src={token.image} alt={`${token.name} image`} />
+          </Box>
+        ) : null}
+        {token.decimals ? (
+          <Box direction="horizontal" alignment="space-between">
+            <Text>Token decimals</Text>
+            <Text>{token.decimals}</Text>
+          </Box>
+        ) : null}
+      </Box>
+      <Button
+        variant="destructive"
+        name={`confirm-hide-token-${token.address}`}
+      >
+        Hide token
+      </Button>
+    </Box>
+  );
+
+  return token.type === TokenViewSelector.NFT
+    ? renderNFTDetails()
+    : renderTokenDetails();
+};

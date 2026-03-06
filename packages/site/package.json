@@ -1,0 +1,50 @@
+{
+  "name": "site",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "preview": "vite preview",
+    "test": "jest",
+    "deploy-testnet": "aws s3 sync dist/ s3://dev.metamask.coti.io --delete"
+  },
+  "dependencies": {
+    "@coti-io/coti-ethers": "^1.0.3",
+    "@coti-io/coti-sdk-typescript": "^1.0.6",
+    "@metamask/providers": "^19.0.0",
+    "@tanstack/react-query": "^5.65.1",
+    "@types/react-router-dom": "^5.3.3",
+    "jazzicon-ts": "^4.0.0",
+    "jest": "^29.7.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-qrcode-logo": "^3.0.0",
+    "react-router": "^7.13.1",
+    "react-router-dom": "^7.13.1",
+    "styled-components": "^6.1.14",
+    "viem": "^2.22.16",
+    "vite-plugin-svgr": "^4.3.0",
+    "wagmi": "^2.14.9",
+    "zns-sdk": "^0.0.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/jest": "^29.5.14",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "babel-plugin-styled-components": "^2.1.4",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "globals": "^15.14.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "typescript": "~5.6.2",
+    "typescript-eslint": "^8.18.2",
+    "vite": "^7.3.1"
+  }
+}

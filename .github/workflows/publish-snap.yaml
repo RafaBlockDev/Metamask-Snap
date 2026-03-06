@@ -1,0 +1,134 @@
+name: Publish COTI Snap Package
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/snap/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  run-tests:
+    uses: ./.github/workflows/test-snap.yaml
+
+  publish-snap:
+    name: Build and Publish Snap
+    runs-on: ubuntu-latest
+    needs: [run-tests]
+    env:
+      NODE_ENV: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18.16.0'
+          registry-url: 'https://registry.npmjs.org/'
+          cache: 'yarn'
+
+      - name: Install Dependencies
+        run: yarn install --immutable
+
+      - name: Auto-increment version
+        id: version
+        run: |
+          cd packages/snap
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          SEMVER_VERSION=$(echo "$CURRENT_VERSION" | cut -d'-' -f1)
+          MAJOR=$(echo "$SEMVER_VERSION" | cut -d. -f1)
+          MINOR=$(echo "$SEMVER_VERSION" | cut -d. -f2)
+          PATCH=$(echo "$SEMVER_VERSION" | cut -d. -f3)
+          NEW_PATCH=$((PATCH + 1))
+
+          COMMIT_HASH=$(git rev-parse --short=6 HEAD)
+
+          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH-$COMMIT_HASH"
+          echo "Current version: $CURRENT_VERSION"
+          echo "New version: $NEW_VERSION"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+          # Update package.json
+          npx json -I -f package.json -e "this.version='$NEW_VERSION'"
+
+          # Update snap.manifest.json
+          npx json -I -f snap.manifest.json -e "this.version='$NEW_VERSION'"
+
+      - name: Build Snap
+        run: |
+          cd packages/snap
+          yarn build
+        env:
+          SNAP_ENV: mainnet
+          NODE_ENV: production
+
+      - name: Verify Build Output
+        run: |
+          cd packages/snap
+          if [ ! -f "dist/bundle.js" ]; then
+            echo "Error: dist/bundle.js not found after build"
+            exit 1
+          fi
+          if [ ! -f "snap.manifest.json" ]; then
+            echo "Error: snap.manifest.json not found"
+            exit 1
+          fi
+          echo "Build output verified successfully"
+
+      - name: Update shasum in manifest
+        run: |
+          cd packages/snap
+          yarn prepublishOnly
+
+#      - name: Publish to NPM
+#        run: |
+#          cd packages/snap
+#          # Check if package is already published
+#          if npm view . version > /dev/null 2>&1; then
+#            echo "Package already exists on NPM, checking if version is different..."
+#            PUBLISHED_VERSION=$(npm view . version)
+#            CURRENT_VERSION=$(node -p "require('./package.json').version")
+#            if [ "$PUBLISHED_VERSION" = "$CURRENT_VERSION" ]; then
+#              echo "Version $CURRENT_VERSION already published, skipping..."
+#              exit 0
+#            fi
+#          fi
+#          echo "Publishing version $CURRENT_VERSION to NPM..."
+#          npm publish --access public
+#        env:
+#          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Update site versions
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          COMMIT_HASH=$(git rev-parse --short=6 HEAD)
+          
+          # Create - Update versions.json for site
+          cat > packages/site/src/config/versions.json << EOF
+          {
+            "snapVersion": "$NEW_VERSION",
+            "gitCommit": "$COMMIT_HASH",
+            "buildDate": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "environment": "production"
+          }
+          EOF
+          
+          echo "Updated versions.json with:"
+          echo "  snapVersion: $NEW_VERSION"
+          echo "  gitCommit: $COMMIT_HASH"
+
+      - name: Commit version changes
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add packages/snap/package.json packages/snap/snap.manifest.json packages/site/src/config/versions.json
+          git commit -m "chore: bump snap version to ${{ steps.version.outputs.new_version }} [skip ci]" || echo "No changes to commit"
+          git push

@@ -1,0 +1,34 @@
+{
+  "version": "1.0.39-3ac455",
+  "description": "COTI Snap - MetaMask Snap for managing confidential tokens and confidential transactions",
+  "proposedName": "COTI",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/coti-io/coti-snap.git"
+  },
+  "source": {
+    "shasum": "2iI8mvoDq3jW3BjbSfyxIsgX8h1jw/JVnMMQrukQ4EI=",
+    "location": {
+      "npm": {
+        "filePath": "dist/bundle.js",
+        "packageName": "@coti-io/coti-snap",
+        "iconPath": "images/icon.svg",
+        "registry": "https://registry.npmjs.org/"
+      }
+    }
+  },
+  "initialPermissions": {
+    "snap_dialog": {},
+    "endowment:page-home": {},
+    "snap_manageState": {},
+    "endowment:ethereum-provider": {},
+    "endowment:lifecycle-hooks": {},
+    "endowment:network-access": {},
+    "endowment:rpc": {
+      "dapps": true,
+      "snaps": false
+    }
+  },
+  "platformVersion": "6.24.0",
+  "manifestVersion": "0.1"
+}
