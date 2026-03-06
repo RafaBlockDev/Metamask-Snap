@@ -1,7 +1,7 @@
 {
   "buildCommand": "yarn build",
   "outputDirectory": "packages/site/dist",
-  "installCommand": "yarn install --mode=skip-build",
+  "installCommand": "sed -i '/allow-scripts/d' .yarnrc.yml && yarn install",
   "rewrites": [
     {
       "source": "/((?!api|_next|assets|favicon.ico|robots.txt).*)",
