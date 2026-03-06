@@ -1,7 +1,7 @@
 {
   "buildCommand": "yarn build",
   "outputDirectory": "packages/site/dist",
-  "installCommand": "yarn install --immutable",
+  "installCommand": "YARN_ENABLE_SCRIPTS=false yarn install",
   "rewrites": [
     {
       "source": "/((?!api|_next|assets|favicon.ico|robots.txt).*)",
