@@ -1,6 +1,7 @@
 {
   "buildCommand": "yarn build",
-  "installCommand": "yarn install --frozen-lockfile",
+  "outputDirectory": "packages/site/dist",
+  "installCommand": "yarn install --immutable",
   "rewrites": [
     {
       "source": "/((?!api|_next|assets|favicon.ico|robots.txt).*)",
